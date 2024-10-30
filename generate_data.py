@@ -1,3 +1,5 @@
+import os
+os.environ['JAX_TRACEBACK_FILTERING'] = 'off'
 import matplotlib.pyplot as plt
 import diffrax as dx
 import jax
@@ -26,29 +28,40 @@ class PendulumSimulation(eqx.Module):
         self.image_size = image_size
 
     def ODE_system(
-        self, t: Float, y: Float[Array, " 2"], args: PyTree
-    ) -> Float[Array, " 2"]:
+    self, t: float, y: jnp.ndarray, args: tuple) -> jnp.ndarray:
         angle, angular_velocity = y
         gravity, length = args
-        return [angular_velocity, -gravity / length * jnp.sin(angle)]
+        # Return a jnp.array instead of a list
+        return jnp.array([angular_velocity, -gravity / length * jnp.sin(angle)])
+
+
+
 
     def simulate_pendulum(
-    self,
-    initial_angle: Float,
-    initial_velocity: Float,
-    gravity: Float,
-    length: Float,
-):
-    # Define the term for the ODE
-        term = dx.ODETerm(self.ODE_system)  # Correctly define the differential equation term
-        solver = dx.Dopri5()  # Define the solver method
-        initial_state = jnp.array([initial_angle, initial_velocity])  # Initial conditions
-        args = (gravity, length)  # Arguments for the ODE system
+        self,
+        initial_angle: float,
+        initial_velocity: float,
+        gravity: float,
+        length: float,
+    ):
+        # Define the ODE term
+        term = dx.ODETerm(self.ODE_system)
+        
+        # Define the solver method
+        solver = dx.Dopri5()
+        
+        # Initial conditions
+        initial_state = jnp.array([initial_angle, initial_velocity])
+        
+        # Arguments for the ODE system
+        args = (gravity, length)
+        
+        # Define when to save the trajectory data
         saveat = dx.SaveAt(t0=True, ts=jnp.arange(0, self.time, self.save_interval * self.dt))
         
         # Solve the differential equation
         sol = dx.diffeqsolve(
-            terms=term,  # Ensure `terms` argument is explicitly named and passed
+            terms=term,
             solver=solver,
             t0=0,
             t1=self.time,
@@ -57,33 +70,35 @@ class PendulumSimulation(eqx.Module):
             dt0=self.dt,
             saveat=saveat,
         )
+        
         return sol
 
 
 
-    def render_pendulum(
-        self,
-        angle: Float,
-        angular_velocity: Float,
-        length: Float,
-    ) -> Float[Array, " n_res n_res"]:
+
+    def render_pendulum(self,angle: float,angular_velocity: float,length: float,) -> jnp.ndarray:
+        # Initialize an empty image
         image = jnp.zeros((self.image_size, self.image_size)).reshape(-1)
+
+        # Generate a grid for pixel positions
         grid_x, grid_y = jnp.meshgrid(
             jnp.linspace(-self.box_size / 2, self.box_size / 2, self.image_size),
             jnp.linspace(-self.box_size / 2, self.box_size / 2, self.image_size),
         )
-        
-        # Stack grid coordinates
+
+        # Stack grid coordinates to create (N, 2) array where N = image_size * image_size
         coordinates = jnp.stack([grid_x.ravel(), grid_y.ravel()], axis=1)
-        
-        # Compute ball position
+
+        # Compute the position of the pendulum bob based on angle and length
         position = jnp.array([length * jnp.sin(angle), -length * jnp.cos(angle)])
-        
-        # Calculate distance of each pixel from ball position
+
+        # Calculate the distance from each pixel to the pendulum bob's position
         distance = jnp.linalg.norm(coordinates - position, axis=1)
-        
-        # Set pixels within ball_size radius to 1.0
+
+        # Set pixels within the ball_size radius to 1.0 to represent the pendulum bob
         image = jnp.where(distance <= self.ball_size, 1.0, 0.0)
+
+        # Reshape the flat array back into a 2D image
         return image.reshape(self.image_size, self.image_size)
 
     def generate_dataset(

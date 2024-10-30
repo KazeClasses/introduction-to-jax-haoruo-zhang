@@ -4,7 +4,7 @@ import equinox as eqx
 from jaxtyping import Float, Array, Int, PRNGKeyArray
 from generate_data import PendulumSimulation
 import optax
-from models import CNNEmulator, LatentODE
+from models import CNNEmulator
 
 def loss_fn(model, batch):
     # Assuming batch is a tuple (input, target) where both are arrays of shape [batch_size, n_res, n_res]
